@@ -5,20 +5,36 @@ const Contact = require("../models/Contact");
 // @access public
 
 const getAllContacts = asyncHandler(async (req, res) => {
-  const page = req.query.page || 1;
-  const limit = req.query.limit || 10;
+  const page = parseInt(req.query.page, 10) || 1; // Ensure page is a number
+  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 100); // Cap limit to 100
   const skip = (page - 1) * limit;
+
+  // Fetch contacts for the user
+  const total = await Contact.countDocuments({ user_id: req.user.id }); // Get total contacts count
   const contacts = await Contact.find({ user_id: req.user.id })
     .skip(skip)
     .limit(limit);
 
-  if (!contacts) {
-    res.status(404);
-    return new Error("Empty");
-  }
-  const total = await Contact.countDocuments();
+  // Calculate total pages
   const totalPages = Math.ceil(total / limit);
-  res.json({
+
+  // Response for empty results
+  if (!contacts.length) {
+    return res.status(200).json({
+      message: "No contacts found",
+      contacts: [],
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    });
+  }
+
+  // Success response
+  res.status(200).json({
+    message: "Contacts fetched successfully",
     contacts,
     pagination: {
       page,
@@ -33,19 +49,31 @@ const getAllContacts = asyncHandler(async (req, res) => {
 // @route POST /api/contacts
 // @access public
 const createContact = asyncHandler(async (req, res) => {
-  console.log(req.body);
   const { name, email, phone } = req.body;
+
+  // Ensure required fields are present
   if (!name || !email || !phone) {
+    res.status(400);
     throw new Error("All fields are mandatory");
   }
+
+  // Validate `user.id`
+  if (!req.user || !req.user.id) {
+    res.status(401);
+    throw new Error("User ID is missing in the token");
+  }
+
+  // Create the contact
   const contact = await Contact.create({
     name,
     email,
     phone,
-    user_id: req.user.id,
+    user_id: req.user.id, // Correct field
   });
 
-  res.status(201).json({ message: "Create contact", data: contact });
+  res
+    .status(201)
+    .json({ message: "Contact created successfully", data: contact });
 });
 
 // @des Update contacts
